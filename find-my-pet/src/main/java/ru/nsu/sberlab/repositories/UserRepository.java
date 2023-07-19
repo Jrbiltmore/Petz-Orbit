@@ -44,4 +44,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByEnabledOrderByFirstNameAsc(boolean enabled);
     
     List<User> findByEnabledOrderByLastNameAsc(boolean enabled);
+    
+    long countByRole(String role);
+    
+    long countByEnabled(boolean enabled);
+    
+    boolean existsByEmail(String email);
 }
