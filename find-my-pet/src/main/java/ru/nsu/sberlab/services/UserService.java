@@ -19,6 +19,7 @@ import ru.nsu.sberlab.repositories.UserRepository;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Service
@@ -32,6 +33,7 @@ public class UserService implements UserDetailsService {
     private final PropertyResolverUtils propertyResolver;
 
     @Transactional
+    @NistSecurityStandard(level = NistSecurityLevel.HIGH)
     public void createUser(UserRegistrationDto userDto) {
         User user = new User(
                 userDto.getEmail(),
@@ -50,6 +52,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    @NistSecurityStandard(level = NistSecurityLevel.HIGH)
     public void deleteUser(Long userId) {
         User user = userRepository.findUserByUserId(userId).orElseThrow(
                 () -> new UsernameNotFoundException(message("api.server.error.user-not-found"))
@@ -66,6 +69,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    @NistSecurityStandard(level = NistSecurityLevel.MEDIUM)
     public void createPet(User principal, PetCreationDto petCreationDto) {
         User user = userRepository.findUserByUserId(principal.getUserId()).orElseThrow(
                 () -> new UsernameNotFoundException(message("api.server.error.user-not-found"))
@@ -83,17 +87,18 @@ public class UserService implements UserDetailsService {
         userRepository.save(user);
     }
 
+    @NistSecurityStandard(level = NistSecurityLevel.LOW)
     public List<PetInfoDto> petsListByUserId(Long userId) {
-        return userRepository.findUserByUserId(userId).orElseThrow(
+        User user = userRepository.findUserByUserId(userId).orElseThrow(
                         () -> new UsernameNotFoundException(message("api.server.error.user-not-found"))
-                )
-                .getPets()
-                .stream()
-                .map(petInfoDtoMapper)
-                .toList();
+                );
+        return user.getPets().stream()
+                .map(petInfoDtoMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
+    @NistSecurityStandard(level = NistSecurityLevel.HIGH)
     public User loadUserByUsername(String email) {
         return userRepository.findByEmail(email).orElseThrow(
                 () -> new UsernameNotFoundException(message("api.server.error.user-not-found"))
