@@ -1,5 +1,225 @@
-Certainly! Let's merge the expanded features into a comprehensive scope for the Chipped Pets Helper project:
 
+# Chipped Pets Helper API Documentation
+
+## Introduction
+
+The Chipped Pets Helper API provides a set of endpoints to manage pets and users, facilitating interactions between pet owners and the pet-loving community. This documentation outlines the available endpoints, their functionalities, request methods, and response formats.
+
+Base URL: `https://api.petzorbit.com`
+
+## Pet Endpoints
+
+### Create a Pet Profile
+
+Create a new pet profile with essential information.
+
+- Endpoint: `/api/pet/create`
+- Method: POST
+- Request Body:
+  ```json
+  {
+    "name": "Buddy",
+    "species": "Dog",
+    "breed": "Golden Retriever",
+    "age": 3,
+    "gender": "Male",
+    "weight": "25 kg",
+    "medical_history": {
+      "vaccinations": [
+        {
+          "name": "Rabies",
+          "date": "2023-02-15"
+        },
+        {
+          "name": "Distemper",
+          "date": "2023-03-10"
+        }
+      ],
+      "medications": [
+        {
+          "name": "Heartworm Preventative",
+          "dosage": "1 tablet/month"
+        }
+      ]
+    }
+  }
+  ```
+- Response:
+  ```json
+  {
+    "id": "12345",
+    "message": "Pet profile for Buddy created successfully."
+  }
+  ```
+
+### Get List of Pets
+
+Retrieve a list of all registered pets for the authenticated user.
+
+- Endpoint: `/api/pet/list`
+- Method: GET
+- Response:
+  ```json
+  {
+    "pets": [
+      {
+        "id": "12345",
+        "name": "Buddy",
+        "species": "Dog",
+        "breed": "Golden Retriever",
+        "age": 3
+      },
+      {
+        "id": "67890",
+        "name": "Whiskers",
+        "species": "Cat",
+        "breed": "Maine Coon",
+        "age": 2
+      }
+    ]
+  }
+  ```
+
+### Get Privileged List of Pets (for Admins)
+
+Retrieve a list of all registered pets, including owners' information. This endpoint is restricted to privileged users.
+
+- Endpoint: `/api/pet/privileged-list`
+- Method: GET
+- Response:
+  ```json
+  {
+    "pets": [
+      {
+        "id": "12345",
+        "name": "Buddy",
+        "species": "Dog",
+        "breed": "Golden Retriever",
+        "age": 3,
+        "owner": {
+          "id": "54321",
+          "name": "John Doe",
+          "email": "john@example.com"
+        }
+      },
+      {
+        "id": "67890",
+        "name": "Whiskers",
+        "species": "Cat",
+        "breed": "Maine Coon",
+        "age": 2,
+        "owner": {
+          "id": "98765",
+          "name": "Jane Smith",
+          "email": "jane@example.com"
+        }
+      }
+    ]
+  }
+  ```
+
+### Find a Pet by Name
+
+Search for a specific pet by their name.
+
+- Endpoint: `/api/pet/find`
+- Method: GET
+- Query Parameter: `name=Buddy`
+- Response:
+  ```json
+  {
+    "id": "12345",
+    "name": "Buddy",
+    "species": "Dog",
+    "breed": "Golden Retriever",
+    "age": 3
+  }
+  ```
+
+## User Endpoints
+
+### User Login
+
+Authenticate the user by providing their email and password.
+
+- Endpoint: `/api/user/login`
+- Method: POST
+- Request Body:
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "password123"
+  }
+  ```
+- Response:
+  ```json
+  {
+    "user_id": "54321",
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+  ```
+
+### User Registration
+
+Register a new user account with the platform.
+
+- Endpoint: `/api/user/registration`
+- Method: POST
+- Request Body:
+  ```json
+  {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "securepassword"
+  }
+  ```
+- Response:
+  ```json
+  {
+    "user_id": "98765",
+    "message": "User registration successful."
+  }
+  ```
+
+### Get User's Personal Cabinet
+
+Retrieve the user's personal cabinet with their profile details and registered pets.
+
+- Endpoint: `/api/user/personal-cabinet`
+- Method: GET
+- Request Header: `Authorization: Bearer <access_token>`
+- Response:
+  ```json
+  {
+    "user_id": "54321",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "pets": [
+      {
+        "id": "12345",
+        "name": "Buddy",
+        "species": "Dog",
+        "breed": "Golden Retriever",
+        "age": 3
+      }
+    ]
+  }
+  ```
+
+### User Account Deletion
+
+Delete the user's account and associated data.
+
+- Endpoint: `/api/user/delete`
+- Method: DELETE
+- Request Header: `Authorization: Bearer <access_token>`
+- Response:
+  ```json
+  {
+    "message": "User account deleted successfully."
+  }
+  ```
+```
 ## Chipped Pets Helper Project Scope
 
 Chipped Pets Helper is a robust platform designed to assist pet owners in managing their pets' information, connecting with a pet-loving community, and promoting responsible pet care. The platform offers a wide range of features and functionalities to cater to the needs of both pet owners and pet-related service providers.
