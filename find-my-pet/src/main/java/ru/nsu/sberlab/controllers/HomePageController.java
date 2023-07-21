@@ -15,7 +15,16 @@ public class HomePageController {
             Model model,
             @AuthenticationPrincipal User principal
     ) {
+        // Add Facebook and Instagram integration logic here
+
+        // Assuming you have Facebook and Instagram data in 'facebookData' and 'instagramData' variables
+        model.addAttribute("facebookData", facebookData);
+        model.addAttribute("instagramData", instagramData);
+
         model.addAttribute("user", principal);
         return "main-page";
     }
+
+    // Implement NIST-level security methods here
+    // ...
 }
