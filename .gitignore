@@ -1,5 +1,21 @@
-*.idea
-*.DS_Store
-**/target
+# IDE-specific files
+.idea/
+.vscode/
 *.iml
 
+# Operating system-specific files
+.DS_Store
+Thumbs.db
+
+# Build artifacts and dependencies
+target/
+node_modules/
+build/
+
+# Sensitive information
+secrets.txt
+credentials.json
+
+# Log files and temporary files
+*.log
+*.tmp
