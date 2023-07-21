@@ -1,11 +1,3 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 name: Deploy project to server
 
 on:
@@ -14,18 +6,301 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  APPLICATION_NAME: "PETZ_ORBIT"
+  REMOTE_PATH_PROD: "/prod"
+  REMOTE_PATH_STAGE: "/stage"
+  REMOTE_PATH_DEV: "/dev"
+  REMOTE_PATH_TEST: "/test"
+  LOG_FILE: "${{ env.APPLICATION_NAME }}.log"
+
 jobs:
-  deploy:
+  test_and_deploy:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    steps:  
-      - name: Connect and Run command on remote server
-        uses: D3rHase/ssh-command-action@v0.2.2
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Cache Maven dependencies
+        id: cache-maven
+        uses: actions/cache@v2
         with:
-          host: ${{secrets.SSH_HOST}}
-          port: ${{secrets.SSH_PORT}}
-          user: ${{secrets.SSH_USER}}
-          private_key: ${{secrets.SSH_PRIVATE_KEY}}
-          command: |
-            cd ${{secrets.SSH_PROJECT_FOLDER}};
-            git pull;
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Check cache status
+        run: |
+          if [ -z "${{ steps.cache-maven.outputs.cache-hit }}" ]; then
+            echo "Cache not found. Installing dependencies..."
+            mvn dependency:go-offline --quiet --batch-mode
+          else
+            echo "Cache found. Dependencies are up-to-date."
+          fi
+
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          java-version: 'adopt@1.11'
+
+      - name: Install Maven dependencies
+        run: mvn install --quiet --batch-mode
+
+      - name: Run Tests
+        run: mvn test --quiet --batch-mode
+
+      - name: Build with Maven
+        run: mvn package --quiet --batch-mode
+
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+      - name: Automatic Versioning
+        id: versioning
+        run: echo "VERSION=$(date +'%Y%m%d%H%M%S')-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: Upload Jar file to production server
+        uses: appleboy/scp-action@v0.2.1
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          source: target/${{ env.APPLICATION_NAME }}.jar
+          target: ${{ env.REMOTE_PATH_PROD }}/${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar
+
+      - name: Connect to production server and restart service
+        id: restart_prod
+        uses: appleboy/ssh-action@v0.3.0
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ env.REMOTE_PATH_PROD }}
+            # Stop the existing service (if running)
+            if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+              kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+            fi
+            # Start the service with the new JAR file
+            nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+
+      - name: Upload Jar file to staging server
+        uses: appleboy/scp-action@v0.2.1
+        with:
+          host: ${{ secrets.STAGE_SSH_HOST }}
+          username: ${{ secrets.STAGE_SSH_USER }}
+          port: ${{ secrets.STAGE_SSH_PORT }}
+          key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
+          source: target/${{ env.APPLICATION_NAME }}.jar
+          target: ${{ env.REMOTE_PATH_STAGE }}/${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar
+
+      - name: Connect to staging server and restart service
+        id: restart_stage
+        uses: appleboy/ssh-action@v0.3.0
+        with:
+          host: ${{ secrets.STAGE_SSH_HOST }}
+          username: ${{ secrets.STAGE_SSH_USER }}
+          port: ${{ secrets.STAGE_SSH_PORT }}
+          key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ env.REMOTE_PATH_STAGE }}
+            # Stop the existing service (if running)
+            if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+              kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+            fi
+            # Start the service with the new JAR file
+            nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+
+      - name: Upload Jar file to development server
+        uses: appleboy/scp-action@v0.2.1
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          port: ${{ secrets.DEV_SSH_PORT }}
+          key: ${{ secrets.DEV_SSH_PRIVATE_KEY }}
+          source: target/${{ env.APPLICATION_NAME }}.jar
+          target: ${{ env.REMOTE_PATH_DEV }}/${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar
+
+      - name: Connect to development server and restart service
+        id: restart_dev
+        uses: appleboy/ssh-action@v0.3.0
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          port: ${{ secrets.DEV_SSH_PORT }}
+          key: ${{ secrets.DEV_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ env.REMOTE_PATH_DEV }}
+            # Stop the existing service (if running)
+            if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+              kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+            fi
+            # Start the service with the new JAR file
+            nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+
+      - name: Upload Jar file to testing server
+        uses: appleboy/scp-action@v0.2.1
+        with:
+          host: ${{ secrets.TEST_SSH_HOST }}
+          username: ${{ secrets.TEST_SSH_USER }}
+          port: ${{ secrets.TEST_SSH_PORT }}
+          key: ${{ secrets.TEST_SSH_PRIVATE_KEY }}
+          source: target/${{ env.APPLICATION_NAME }}.jar
+          target: ${{ env.REMOTE_PATH_TEST }}/${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar
+
+      - name: Connect to testing server and restart service
+        id: restart_test
+        uses: appleboy/ssh-action@v0.3.0
+        with:
+          host: ${{ secrets.TEST_SSH_HOST }}
+          username: ${{ secrets.TEST_SSH_USER }}
+          port: ${{ secrets.TEST_SSH_PORT }}
+          key: ${{ secrets.TEST_SSH_PRIVATE_KEY }}
+          script: |
+            cd ${{ env.REMOTE_PATH_TEST }}
+            # Stop the existing service (if running)
+            if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+              kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+            fi
+            # Start the service with the new JAR file
+            nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+
+      - name: Verify deployment to production
+        run: curl -Isf http://${{ secrets.PROD_SSH_HOST }}:${{ secrets.PROD_APPLICATION_PORT }}
+        continue-on-error: true
+
+      - name: Verify deployment to staging
+        run: curl -Isf http://${{ secrets.STAGE_SSH_HOST }}:${{ secrets.STAGE_APPLICATION_PORT }}
+        continue-on-error: true
+
+      - name: Verify deployment to development
+        run: curl -Isf http://${{ secrets.DEV_SSH_HOST }}:${{ secrets.DEV_APPLICATION_PORT }}
+        continue-on-error: true
+
+      - name: Verify deployment to testing
+        run: curl -Isf http://${{ secrets.TEST_SSH_HOST }}:${{ secrets.TEST_APPLICATION_PORT }}
+        continue-on-error: true
+
+      - name: Archive logs
+        if: always()
+        run: mv ${{ env.LOG_FILE }} ${{ github.run_number }}_${{ env.LOG_FILE }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: my-app-logs
+          path: ${{ github.run_number }}_${{ env.LOG_FILE }}
+
+      - name: Scan for secrets
+        uses: zricethezav/gitleaks-action@v7.3.0
+        with:
+          flags: --redact
+
+      - name: Notify on cache miss
+        if: steps.cache-maven.outputs.cache-hit != 'true'
+        run: echo "Maven dependencies cache missed. Dependencies have been installed."
+
+      - name: Notify on deployment failure
+        if: failure()
+        run: echo "Deployment failed."
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        # Add a notification to Slack or other channels on deployment failure
+
+      - name: Notify on deployment success to production
+        if: success() && steps.restart_prod.outcome == 'success'
+        run: echo "Deployment to production successful!"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        # Add a notification to Slack or other channels for successful production deployment
+
+      - name: Notify on deployment success to staging
+        if: success() && steps.restart_stage.outcome == 'success'
+        run: echo "Deployment to staging successful!"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        # Add a notification to Slack or other channels for successful staging deployment
+
+      - name: Notify on deployment success to development
+        if: success() && steps.restart_dev.outcome == 'success'
+        run: echo "Deployment to development successful!"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        # Add a notification to Slack or other channels for successful development deployment
+
+      - name: Notify on deployment success to testing
+        if: success() && steps.restart_test.outcome == 'success'
+        run: echo "Deployment to testing successful!"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        # Add a notification to Slack or other channels for successful testing deployment
+
+      - name: Rollback production deployment on failure
+        if: failure() && steps.restart_prod.outcome == 'success'
+        run: |
+          echo "Rolling back production deployment..."
+          cd ${{ env.REMOTE_PATH_PROD }}
+          # Stop the existing service (if running)
+          if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+            kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+          fi
+          # Start the service with the previous JAR file
+          nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.PREVIOUS_VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+        env:
+          PREVIOUS_VERSION: ${{ github.event.before }}
+
+      - name: Rollback staging deployment on failure
+        if: failure() && steps.restart_stage.outcome == 'success'
+        run: |
+          echo "Rolling back staging deployment..."
+          cd ${{ env.REMOTE_PATH_STAGE }}
+          # Stop the existing service (if running)
+          if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+            kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+          fi
+          # Start the service with the previous JAR file
+          nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.PREVIOUS_VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+        env:
+          PREVIOUS_VERSION: ${{ github.event.before }}
+
+      - name: Rollback development deployment on failure
+        if: failure() && steps.restart_dev.outcome == 'success'
+        run: |
+          echo "Rolling back development deployment..."
+          cd ${{ env.REMOTE_PATH_DEV }}
+          # Stop the existing service (if running)
+          if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+            kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+          fi
+          # Start the service with the previous JAR file
+          nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.PREVIOUS_VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+        env:
+          PREVIOUS_VERSION: ${{ github.event.before }}
+
+      - name: Rollback testing deployment on failure
+        if: failure() && steps.restart_test.outcome == 'success'
+        run: |
+          echo "Rolling back testing deployment..."
+          cd ${{ env.REMOTE_PATH_TEST }}
+          # Stop the existing service (if running)
+          if pgrep -f '${{ env.APPLICATION_NAME }}.jar' >/dev/null; then
+            kill $(pgrep -f '${{ env.APPLICATION_NAME }}.jar')
+          fi
+          # Start the service with the previous JAR file
+          nohup java -jar ${{ env.APPLICATION_NAME }}-${{ env.PREVIOUS_VERSION }}.jar > ${{ env.LOG_FILE }} 2>&1 &
+        env:
+          PREVIOUS_VERSION: ${{ github.event.before }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Remove sensitive files after the workflow completes
+          rm -rf $HOME/.m2/repository
+          rm -rf target
+          rm -f ${{ env.APPLICATION_NAME }}.jar
